@@ -242,16 +242,12 @@ table(results)
 ::: {.solution}
 
 ```{r}
+
 sim_mse <- function(n, sigma) {
   set.seed(613)
   mse_1 <- c()
   mse_2 <- c()
   mse_3 <- c()
-  
-  ntest <- 10000                          # Number of test samples
-  xtest = sim_x(ntest)                    # generate test X's
-  ytest = sim_y(xtest, sd=sigma)             # generate test Y's
-  data_test = tibble(x=xtest, y=ytest)    # test data
 
   for (i in 1:100){
     x <- sim_x(n) 
@@ -301,7 +297,7 @@ sim_mse <- function(n, sigma) {
 
 ## i. Use your function to repeat the simulation in part *f*, but use $\sigma=2$. Report the number of times each model was best (you do not need to produce any plots). 
 
-: Out of 100 simulations, for linear, quadratic, and polynomial models, each of them had the lowest MSE 12, 78, and 10 times.
+: Out of 100 simulations, for linear, quadratic, and polynomial models, each of them had the lowest MSE 14, 68, and 18 times.
 
 ::: {.solution}
 
@@ -316,7 +312,7 @@ sim_mse(100, 2)
 
 ## j. Repeat *i*, but now use $\sigma=4$ and $n=300$.
 
-: Out of 100 simulations, for linear, quadratic, and polynomial models, each of them had the lowest MSE 14, 71, and 15 times.
+: Out of 100 simulations, for linear, quadratic, and polynomial models, each of them had the lowest MSE 11, 78, and 11 times.
 
 
 ::: {.solution}

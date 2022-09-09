@@ -9,7 +9,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Your Name Here" />
+<meta name="author" content="Hyunsuk Ko" />
 
 
 <title>Homework #1: Supervised Learning</title>
@@ -2843,7 +2843,7 @@ div.tocify {
 
 
 <h1 class="title toc-ignore">Homework #1: Supervised Learning</h1>
-<h4 class="author"><strong>Your Name Here</strong></h4>
+<h4 class="author"><strong>Hyunsuk Ko</strong></h4>
 <h4 class="date">Due: Wed Sept 07 | 11:45am</h4>
 
 </div>
@@ -3106,11 +3106,6 @@ standard deviation of the random error <span class="math inline">\(\sigma\)</spa
   mse_1 &lt;- c()
   mse_2 &lt;- c()
   mse_3 &lt;- c()
-  
-  ntest &lt;- 10000                          # Number of test samples
-  xtest = sim_x(ntest)                    # generate test X&#39;s
-  ytest = sim_y(xtest, sd=sigma)             # generate test Y&#39;s
-  data_test = tibble(x=xtest, y=ytest)    # test data
 
   for (i in 1:100){
     x &lt;- sim_x(n) 
@@ -3161,23 +3156,23 @@ but use <span class="math inline">\(\sigma=2\)</span>. Report the number
 of times each model was best (you do not need to produce any
 plots).</h2>
 <p>: Out of 100 simulations, for linear, quadratic, and polynomial
-models, each of them had the lowest MSE 12, 78, and 10 times.</p>
+models, each of them had the lowest MSE 14, 68, and 18 times.</p>
 <div class="solution">
 <pre class="r"><code>sim_mse(100, 2)</code></pre>
 <pre><code>## results
 ##  1  2  3 
-## 12 78 10</code></pre>
+## 14 68 18</code></pre>
 </div>
 </div>
 <div id="j.-repeat-i-but-now-use-sigma4-and-n300." class="section level2">
 <h2>j. Repeat <em>i</em>, but now use <span class="math inline">\(\sigma=4\)</span> and <span class="math inline">\(n=300\)</span>.</h2>
 <p>: Out of 100 simulations, for linear, quadratic, and polynomial
-models, each of them had the lowest MSE 14, 71, and 15 times.</p>
+models, each of them had the lowest MSE 11, 78, and 11 times.</p>
 <div class="solution">
 <pre class="r"><code>sim_mse(300, 4)</code></pre>
 <pre><code>## results
 ##  1  2  3 
-## 14 71 15</code></pre>
+## 11 78 11</code></pre>
 </div>
 </div>
 <div id="k.-describe-the-effects-sigma-and-n-has-on-selection-of-the-best-model-why-is-the-true-model-form-i.e.-quadratic-not-always-the-best-model-to-use-when-prediction-is-the-goal" class="section level2">
