@@ -1,6 +1,6 @@
 ---
 title: "Homework #2: Resampling" 
-author: "**Your Name Here**"
+author: "**Hyunsuk Ko**"
 date: "Due: Wed Sept 14 | 11:45am"
 output: R6030::homework
 ---
@@ -11,6 +11,7 @@ output: R6030::homework
 
 ```{r config, echo=FALSE}
 source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 ```
 
 # Required R packages and Directories
@@ -20,6 +21,9 @@ source(system.file("config/hw_config.R", package="R6030")) # knitr settings
 data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
 library(R6030)     # functions for DS-6030
 library(tidyverse) # functions for data manipulation  
+library(splines)
+library(FNN)
+rm(list = ls())
 ```
 :::
 
@@ -37,7 +41,7 @@ Y &= 1 + 2x + 5\sin(5x) + \epsilon \\
 ::: {.solution}
 
 ```{r}
-sim_x <- function(n) runif(n, min = 0, max = 1)   
+sim_x <- function(n) runif(n, min = 0, max = 2)   
 sim_y <- function(x){               # generate Y|X from N{f(x),sd}
   n = length(x)
   f <- function(x) 1 + 2 * x + 5 * sin(5 * x) 
@@ -105,27 +109,32 @@ gg_myplot +
 set.seed(212)
 
 n <- length(x) # length of observed data
-M <- 200 # numbver of bootstrap samples
+M <- 200 # number of bootstrap samples
 p <- numeric(M) # initialize vector for test statistic
-data_eval<- tibble(x = seq(0,2,length=100))
+data_eval<- tibble(x = seq(0,2,length=100)) # evaluation points
 YHAT <- matrix(NA, nrow(data_eval), M)
+kts_bdry <- c(-.2,1.2)
 
 for (m in 1:M) {
   ind = sample(n, replace = TRUE)  # sample indices with replacement
   xboot = x[ind]                   # bootstrap sample
+  p[m] = mean(xboot)
   m_boot = lm(y ~ bs(x, df = 5, Boundary.knots = kts_bdry)-1, data = data_train[ind,]) # fit bootstrap data
   # predict from bootstrap model
   YHAT[,m] = predict(m_boot, data_eval)
 }
+#print(YHAT)
 
-data_fit <- as_tibble(YHAT) %>%
-  bind_cols(data_eval) %>%
+data_fit <- as_tibble(YHAT) %>% # convert matrix into tibble
+  bind_cols(data_eval) %>%      # add the eval points
   pivot_longer(-x, names_to = "simulation", values_to = "y") # convert to long format
 
 ggplot(data_train, aes(x,y)) +
   geom_smooth(method = "lm", formula = as.formula('y~bs(x, df=5, deg=3, Boundary.knots = kts_bdry)-1')) +
   geom_line(data=data_fit, color="red", alpha=.1, aes(group=simulation)) +
-  geom_point()
+  geom_point() +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(-5,15))
 ```
 
 
@@ -139,6 +148,11 @@ ggplot(data_train, aes(x,y)) +
 
 ```{r}
 quantile(p, probs = c(.025, .975)) # 95% bootstrap interval
+
+gg_myplot + 
+  geom_line(data=fifth.data, aes(color=model)) +
+  geom_vline(xintercept = quantile(p, probs = c(.025, .975))[1]) +
+  geom_vline(xintercept = quantile(p, probs = c(.025, .975))[2])
 ```
 
 
@@ -159,20 +173,86 @@ Run 10-fold cross-validation on the data generated in part 1b to select the opti
     - produce a plot with $k$ on the x-axis and the estimated MSE on the y-axis (optional: add 1-standard error bars). 
 - Notation: The $k$ is the tuning paramter for the kNN model. The $v=10$ is the number of folds in V-fold cross-validation. Don't get yourself confused.
 
-
 ::: {.solution}
 
-Add solution here
+```{r}
+knn_eval <- function(k, data_train, data_test){
+  # fit model and eval on training data
+  knn = knn.reg(data_train[,'x', drop=FALSE], 
+                y = data_train$y, 
+                test = data_train[,'x', drop=FALSE], 
+                k = k)
+  r = data_train$y- knn$pred      # residuals on training data  
+  mse.train = mean(r^2)            # training MSE
+  
+  # fit model and eval on test data
+  knn.test = knn.reg(data_train[,'x', drop=FALSE], 
+                     y = data_train$y, 
+                     test=data_test[,'x', drop=FALSE], 
+                     k=k)
+  r.test = data_test$y - knn.test$pred # residuals on test data
+  mse.test = mean(r.test^2)          # test MSE
+    # results
+  edf = nrow(data_train)/k         # effective dof (edof)
+  tibble(k=k, edf=edf, mse.train, mse.test)
+}
+```
+
+
+
+
+```{r}
+n <- nrow(data_train) # number of training observations (= 100)
+n.folds <- 10 # number of folds for cross-validation
+set.seed(221)
+fold <- sample(rep(1:n.folds, length = n)) # vector of fold labels
+data_knn = tibble()
+
+# Iterate over folds
+for (j in 1:n.folds) {
+  # Set training / val data
+  val = which(fold == j) # indices of holdout / validation data
+  train = which(fold != j) # indices of fitting / training data
+  n.val = length(val) # number of observations in validation
+  
+  # Fit and evaluate models
+  K = seq(3,40,1)
+  for(k in K){
+    tmp = knn_eval(k, data_train= slice(data_train,train), data_test= slice(data_train, val))
+    data_knn = bind_rows(data_knn, tmp)
+  }
+}
+
+df_result <- data_knn %>% group_by(k) %>%
+  summarize(mse = mean(mse.test), sd = sd(mse.test), se = sd / sqrt(n)) %>%
+  arrange(mse)
+df_result
+
+ggplot(df_result, aes(x=k, y = mse)) +
+  geom_pointrange(aes(ymin = mse-se, ymax = mse+se))
+```
+
+
 
 :::
 
 
 ## b. The $k$ (number of neighbors) in a kNN model determines the effective degrees of freedom *edf*. What is the optimal *edf*? Be sure to use the correct sample size when making this calculation. Produce a plot similar to that from part *a*, but use *edf* (effective degrees of freedom) on the x-axis. 
 
+: Our optimal *edf* = 11.250
+
 
 ::: {.solution}
 
-Add solution here
+```{r}
+df_edf <- df_result %>%
+  mutate(edf = 90 / k)
+df_edf
+
+ggplot(df_edf, aes(x = edf, y = mse)) +
+  geom_pointrange(aes(ymin = mse-se, ymax = mse+se))
+```
+
 
 :::
 
@@ -182,7 +262,7 @@ Add solution here
 
 ::: {.solution}
 
-Add solution here
+As k = 8 gives the lowest mean test MSE, this will be our optimal k.
 
 :::
 
@@ -190,9 +270,31 @@ Add solution here
 - Fit a set of kNN models, using the full training data, and calculate the mean squared error (MSE) on the test data for each model. Use the same $k$ values in *a*. 
 - Report the optimal $k$, the corresponding *edf*, and MSE based on the test set.
 
+: Our optimal $k = 13$, *edf* = 7.692, and test MSE = 7.109
+
 ::: {.solution}
 
-Add solution here
+```{r}
+ntest <- 50000                          # Number of test samples
+set.seed(223)                           # set *different* seed 
+xtest = sim_x(ntest)                    # generate test X's
+ytest = sim_y(xtest)             # generate test Y's
+data_test = tibble(x=xtest, y=ytest)    # test data
+```
+
+
+```{r}
+data_knn2 = tibble()
+K = seq(3,40,1)
+for(k in K){
+  tmp = knn_eval(k, data_train= data_train, data_test= data_test)
+  data_knn2 = bind_rows(data_knn2, tmp)
+}
+
+data_knn2 %>% arrange(by = mse.test)
+```
+
+
 
 :::
 
@@ -202,15 +304,29 @@ Add solution here
     
 ::: {.solution}
 
-Add solution here
+```{r}
+split_knn <- data_knn2 %>% mutate(label = 'train-test split', edf = 90 / k)
+cv_knn <- data_knn %>% group_by(k) %>%
+  summarize(mse.test = mean(mse.test), label = 'cross validation') %>%
+  mutate(edf = 90 / k)
 
+ggplot() +
+  geom_line(data = cv_knn, aes(x = k, y = mse.test, color = label)) +
+  geom_line(data = split_knn, aes(x = k, y = mse.test, color = label)) + 
+  labs(title = "Test MSE of cross validation and train-test split by k")
+
+ggplot() +
+  geom_line(data = cv_knn, aes(x = edf, y = mse.test, color = label)) +
+  geom_line(data = split_knn, aes(x = edf, y = mse.test, color = label)) +
+  labs(title = "Test MSE of cross validation and train-test split by edf")
+```
 :::
     
 ## f. Based on the plots from *e*, does it appear that cross-validation worked as intended? How sensitive is the choice of $k$ on the resulting test MSE?      
 
 ::: {.solution}
 
-Add solution here
+As expected, cross-validation (red line) gives lower MSE than simple train-test split (blue line). At first, as k increases, test mse starts to decrease, but when k reaches a certain point, test MSE starts to increase again. 
 
 :::
 
