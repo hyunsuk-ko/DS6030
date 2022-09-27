@@ -1,6 +1,6 @@
 ---
 title: "Homework #3: Penalized Regression" 
-author: "**Your Name Here**"
+author: "**Hyunsuk Ko**"
 date: "Due: Wed Sept 21 | 11:45am"
 output: R6030::homework
 ---
@@ -145,13 +145,16 @@ for(m in 1:M) {
 
 ## b. Description and results of a hypothesis test comparing $\lambda_{\rm min}$ and $\lambda_{\rm 1SE}$.
 
-$H_0: \lambda_{\rm min} = \lambda_{\rm 1SE}$
-$H_a: \lambda_{\rm min} \neq \lambda_{\rm 1SE}$
+$H_0: MSE_{\lambda_{\rm min}} = MSE_{\lambda_{\rm 1SE}}$
+
+$H_a: MSE_{\lambda_{\rm min}} \neq MSE_{\lambda_{\rm 1SE}}$
+
+Since p-value for paired t.test is less than 0.05, we cannot reject the null hypothesis and conclude that $MSE_{\lambda_{\rm min}}$ and 
+$MSE_{\lambda_{\rm 1SE}}$ are actually the same.
 
 ::: {.solution}
 ```{r}
 a <- data.frame(lambda_min = lambda_min, mse_min= mse_min, lambda_1se = lambda_1se ,mse_1se = mse_1se)
-a
 
 mean(a$mse_min)
 mean(a$mse_1se)
@@ -178,73 +181,32 @@ train <- read.csv('realestate-train.csv')
 test <- read.csv('realestate-test.csv')
 ```
 
-```{r}
-unique(train$HouseStyle)
-```
-
 
 ```{r}
 train <- train %>% mutate(PoolArea = ifelse(PoolArea != 0, 1, 0),
-                          CentralAir = ifelse(CentralAir == "Y", 1, 0),
-                          BldgType = case_when(
-                            train$BldgType == "1Fam" ~ 0,
-                            train$BldgType == "2fmCon" ~ 1,
-                            train$BldgType == "Duplex" ~ 2,
-                            train$BldgType == "TwnhsE" ~ 3,
-                            train$BldgType == "Twnhs" ~ 4),
-                          HouseStyle = case_when(
-                            train$HouseStyle == "2Story" ~ 0,
-                            train$HouseStyle == "1.5Fin"  ~ 1,
-                            train$HouseStyle == "1Story" ~ 2,
-                            train$HouseStyle == "1.5Unf" ~ 3,
-                            train$HouseStyle == "SLvl"  ~ 4,
-                            train$HouseStyle == "2.5Unf" ~ 5,
-                            train$HouseStyle == "2.5Fin" ~ 6,
-                            train$HouseStyle == "SFoyer" ~ 7,
-                          ))
+                          CentralAir = ifelse(CentralAir == "Y", 1, 0))
 
 test <- test %>% mutate(PoolArea = ifelse(PoolArea != 0, 1, 0),
-                          CentralAir = ifelse(CentralAir == "Y", 1, 0),
-                          BldgType = case_when(
-                            test$BldgType == "1Fam" ~ 0,
-                            test$BldgType == "2fmCon" ~ 1,
-                            test$BldgType == "Duplex" ~ 2,
-                            test$BldgType == "TwnhsE" ~ 3,
-                            test$BldgType == "Twnhs" ~ 4),
-                          HouseStyle = case_when(
-                            test$HouseStyle == "2Story" ~ 0,
-                            test$HouseStyle == "1.5Fin"  ~ 1,
-                            test$HouseStyle == "1Story" ~ 2,
-                            test$HouseStyle == "1.5Unf" ~ 3,
-                            test$HouseStyle == "SLvl"  ~ 4,
-                            test$HouseStyle == "2.5Unf" ~ 5,
-                            test$HouseStyle == "2.5Fin" ~ 6,
-                            test$HouseStyle == "SFoyer" ~ 7,
-                          ))
+                          CentralAir = ifelse(CentralAir == "Y", 1, 0))
 ```
 
-
-```{r}
-regnull <- lm(price ~ 1, data = train)
-regfull <- lm(price ~ ., data = train)
-step(regnull, scope = list(lower = regnull, upper = regfull), direction = "both")
-```
 :::
+
 
 
 ## b. Use an *elastic net* model to predict the `price` of the test data.  
 - You are free to use any data transformation or feature engineering
 - You are free to use any tuning parameters
 - Report the $\alpha$ and $\lambda$ parameters you used to make your final predictions.
+: $\alpha$ = 0.8, $\lambda$ = 0.6432
 - Describe how you choose those tuning parameters
-
+: Opimtal $\lambda$ was chosen based among lambda candidates that gives the best result.
 
 ```{r}
 X = glmnet::makeX(
-  train = train %>% select(-price),
-  test = test
+  train = train %>% select(-c(price, PoolArea, CentralAir)),
+  test = test %>% select(-c(PoolArea, CentralAir))
 )
-#X
 
 X.train = X$x
 
@@ -257,6 +219,7 @@ X.test = X$xtest
 
 ::: {.solution}
 ```{r}
+set.seed(2022)
 #--ElasticNet 
 a = 0.8
 
@@ -266,6 +229,11 @@ beta.enet = coef(fit.enet, s="lambda.min")
 yhat.enet = predict(fit.enet, newx = X.test, s = "lambda.min")
 ```
 
+```{r}
+fit.enet$lambda.min
+```
+
+
 :::
 
 ## c. Submit a .csv file (ensure comma separated format) named `lastname_firstname.csv` that includes the column named *yhat* that is your estimates. We will use automated evaluation, so the format must be exact.  
@@ -274,15 +242,36 @@ yhat.enet = predict(fit.enet, newx = X.test, s = "lambda.min")
 ::: {.solution}
 ```{r}
 test <- test %>% mutate(yhat = yhat.enet[,1])
-test
 
-write_csv(test, 'ko_hyunsuk.csv')
+my_yhat <- data.frame(yhat = yhat.enet[,1])
+my_yhat
+
+write_csv(my_yhat, 'ko_hyunsuk.csv')
 ```
 
 :::
 
 ## d. Report the anticipated performance of your method in terms of RMSE. We will see how close your performance assessment matches the actual value. 
 
+: The anticiapted RMSE of the final model (train MSE) is 38.76.
+
 ::: {.solution}
-Add Solution Here
+```{r}
+set.seed(2022)
+#--ElasticNet 
+a = 0.8
+
+#set alpha for elastic net 
+fit.enet = cv.glmnet(X.train,Y.train, alpha=a, nfolds= 10) 
+beta.enet = coef(fit.enet, s="lambda.min") 
+yhat.enet = predict(fit.enet, newx = X.train, s = "lambda.min")
+
+train <- train %>% mutate(yhat = yhat.enet[,1])
+train
+
+r.train = train$price - train$yhat # residuals on test data
+mse.train = sqrt(mean(r.train^2))
+mse.train
+```
+
 :::   
