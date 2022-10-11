@@ -103,6 +103,7 @@ yhat_ridge = predict(ridge_cv, X.test, s = "lambda.min")
 ::: {.solution}
 ```{r}
 set.seed(2022)
+# alpha = 0.5
 fit.enet = cv.glmnet(X.train, Y.train, alpha = 0.5, family = "binomial")
 fit.enet$lambda.min
 ```
@@ -125,24 +126,17 @@ gamma_ridge = predict(ridge_cv, X.train, s = "lambda.min", type = 'link')
 gamma_enet = predict(fit.enet, X.train, s = "lambda.min", type = 'link')
 
 ROC_ridge = tibble(truth = factor(Y.train, levels=c(1,0)), gamma = gamma_ridge[,1]) %>%
-  yardstick::roc_curve(truth, gamma)
+  yardstick::roc_curve(truth, gamma) %>%
+  mutate(label = "Ridge")
 
 ROC_enet = tibble(truth = factor(Y.train, levels=c(1,0)), gamma = gamma_enet[,1]) %>%
-  yardstick::roc_curve(truth, gamma)
+  yardstick::roc_curve(truth, gamma) %>%
+  mutate(label = "Elastic Net")
 
-ROC_ridge %>%
-  ggplot(aes(1-specificity, sensitivity)) + geom_line() +
-  geom_abline(lty = 3) +
-  coord_equal() +
-  labs(title = "ROC Curve for Ridge Regression on Train Data")
-
-ROC_enet %>%
-  ggplot(aes(1-specificity, sensitivity)) + geom_line() +
-  geom_abline(lty = 3) +
-  coord_equal() +
-  labs(title = "ROC Curve for Elastic Net on Train Data")
-
-ROC_enet
+ggplot() +
+  geom_line(data = ROC_ridge, aes(x = 1-specificity, y = sensitivity, color = label)) +
+  geom_line(data = ROC_enet, aes(x = 1-specificity, y = sensitivity, color = label)) + 
+  labs(title = "ROC Curve for Ridge Regression and Elastic Net on Train Data")
 ```
 :::
 
