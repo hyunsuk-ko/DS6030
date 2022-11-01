@@ -1,0 +1,10 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+$L = \prod_{k=1}^{n} \pi f_k(x;\theta) = \prod_{k=1}^{n} \pi \frac{\lambda_1^x_k e^{-\lambda_1}}{x_k!} + (1-\pi) \frac{\lambda_2^x_k e^{-\lambda_2}}{x_k!}$
+
+
+
+$logL = log \prod_{k=1}^{n} \pi \frac{\lambda_1^x_k e^{-\lambda_1}}{x_k!} + (1-\pi) \frac{\lambda_2^x_k e^{-\lambda_2}}{x_k!} = \sum_{k=1}^{n} log(\pi \frac{\lambda_1^x_k e^{-\lambda_1}}{x_k!} + (1-\pi) \frac{\lambda_2^x_k e^{-\lambda_2}}{x_k!})$

@@ -1,0 +1,223 @@
+---
+title: "Homework #7: SVM and Generative Classifiers" 
+author: "**Hyun Ko**"
+date: "Due: Wed Oct 26 | 11:45am"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2022 | University of Virginia**
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+# Required R packages and Directories
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data_dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for DS-6030
+library(tidyverse) # functions for data manipulation   
+library(e1071)     # svm functions
+# Add other libraries here
+library(MASS)
+library(matlib)
+library(glue)
+```
+:::
+
+
+
+# Problem 1: Handwritten Digit Recognition
+
+The MNIST database of handwritten digits (<http://yann.lecun.com/exdb/mnist/>) was an early driver of machine learning innovation. The data are greyscale values (0-255) of handwritten single digits (0-9) from a 28 x 28 image (784 dimensional vector). I did some preprocessing, include principal component analysis (PCA), and reduced dimensionality down to 30 predictors (`X1`, `X2`, ..., `X30`). There are ten possible labels $\{0, 1, \ldots, 9\}$ corresponding to each digit. 
+
+
+## a. Load the MNIST training and testing data. 
+The data are `.rds` format. Training data has 1000 samples from each class. The test data has only one sample from each class. 
+[Training Data](`r file.path(data_dir, "mnist_train.rds")`)
+[Testing Data](`r file.path(data_dir, "mnist_test.rds")`)
+
+
+::: {.solution}
+
+```{r}
+train = readRDS("mnist_train.rds")
+test = readRDS("mnist_test.rds")
+```
+
+
+:::
+
+
+
+## b. Quadratic Discriminant Analysis (QDA)
+
+Implement quadratic discriminant analysis (QDA) step-by-step (i.e., manually). Do the following:
+
+i. For each digit, estimate the mean and variance-covariance of the predictors. 
+ii. Estimate the prior class probabilities. 
+iii. Use i. and ii. to estimate $\Pr(Y = k \mid X=x)$, with the help of Bayes theorem, for $k = 0, 1, \ldots, 9$, for the ten observations in the test set. This should produce a 10 x 10 object where the rows correspond to the test observations, and the 10 columns the probability of each digit. 
+iv. Indicate how well the model predicts the test data. You choose the metric(s) for evaluation.
+
+
+::: {.solution}
+
+```{r}
+get_cov = function(x) {
+  target = train %>% filter(label == x) %>% dplyr::select(-label)
+  return(cov(target))
+}
+
+get_colmeans = function(x) {
+  target = train %>% filter(label == x) %>% dplyr::select(-label)
+  return(colMeans(target))
+}
+
+get_prior = function(x) {
+  prior = nrow(train %>% filter(label == x)) / 20000
+  return(prior)
+}
+
+# Code from Data Blog https://xavierbourretsicotte.github.io/MLE_Multivariate_Gaussian.html
+get_likelihood = function(X, MU, SIGMA){
+  # X = observation data
+  # X, MU are p x 1 vectors
+  # SIGMA is a p x p matrix
+  
+  SIGMA_inv = inv(SIGMA)
+  denominator = sqrt((2 * pi) ** ncol(train) * det(SIGMA))
+  exponent = -0.5 * (as.matrix(X - MU) %*% SIGMA_inv %*% t(as.matrix(X - MU)))
+
+  return((1 / denominator) * exp(exponent))
+}
+
+get_posterior = function(row){
+  X = as.matrix(test[row+1,] %>% dplyr::select(-label)) # observation
+  pre_likelihoods = c()
+  normalize = 0
+  global_norm = c()
+  for (i in 0:9){
+    MU = as.vector(get_colmeans(i))
+    SIGMA = as.matrix(get_cov(i)) 
+    result = get_likelihood(X, MU, SIGMA) * get_prior(i)
+    normalize = normalize + result
+    pre_likelihoods = append(pre_likelihoods, result)
+    
+    if (i == 9){
+      global_norm = append(global_norm, normalize)
+    }
+  }
+  posterior_prob = pre_likelihoods / global_norm[1]
+  return(posterior_prob)
+}
+```
+
+
+```{r}
+df = data.frame("Prob 0"= NA, "Prob 1"= NA, "Prob 2"= NA, "Prob 3"= NA, "Prob 4"= NA, "Prob 5"= NA, "Prob 6"= NA, "Prob 7"= NA, "Prob 8"= NA, "Prob 9"= NA )
+
+for (i in 0:9){
+  df[nrow(df) + 1,] <- get_posterior(i)
+}
+
+df = df %>% drop_na()
+df$observation = seq(0,9)
+df = df[, c(11, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]
+df
+```
+
+
+
+
+
+
+
+:::
+
+
+# Problem 2: One-vs-Rest
+
+In KNN and the generative models (LDA/QDA, MDA, KDA, naive bayes), it is straightforward to fit a model with more than two classes. Other methods, like Logistic Regression and Support Vector Machines, are designed to deal with outcome variables that take only two values. However we can still use binary classifiers for a multi-class problems. One approach, called *one-vs-rest* is the easiest to implement (<https://en.wikipedia.org/wiki/Multiclass_classification>, and see ISL 9.4.2).
+
+For outcome variables that take K values, K models will be fit. Model 1 will be fit to discriminant class $1$ from all the other classes ($\{2,\ldots, K\}$). Model 2 will be fit to discriminate class $2$ from all the other classes ($\{1, 3, 4, \ldots, K\}$), etc. The estimated class for observation $Y_i$ is the one receiving the highest probability score (this assumes equal costs of mis-classification).
+
+Details: To fit model $k$ on the training data, code $Y=1$ if the label is $k$ and $Y=0$ if the label is not $k$ (thus comparing class $k$ vs all the rest). Then on the test data, calculate $\hat{p}_k(x_i)$, the estimated probability that $Y = 1$ according to model $k$. The estimated class label for test observation $i$ is $\arg\max_{1\leq k \leq K} \hat{p}_k(x_i)$. 
+
+We will use the MNIST digit data for this problem. 
+
+## a. Support Vector Machines (SVM) for 2-class problem
+
+To get warmed up we will fit an SVM model for a 2-class problem. In this problem, treat the digit 0 as the class of interest (`+1`) and all other digits as the negative class (`-1`).
+Fit a SVM model, using the *radial basis kernel*. 
+
+- Normally, you will need to estimate the tuning parameters for each model. But to simplify, you can use the default value of `gamma` and set `cost = 100`. 
+
+Make predictions on the 10 test observations and show the results. 
+
+- If you use the `e1071::svm()` function, set `probability = TRUE`. Then with `predict.svm(..., probability=TRUE) %>% attr("probabilities")` you can extract a probability matrix. The probabilities are estimated with [Platt scaling](https://en.wikipedia.org/wiki/Platt_scaling).
+
+- The model is intended to distinguish between 0 and everything else, so hopefully it correctly identifies which observation is 0. 
+
+::: {.solution}
+
+```{r}
+# treat the digit 0 as the class of interest (+1) and all other digits as the negative class (-1)
+svm_train = train
+svm_test = test
+svm_train$Y = ifelse(svm_train$label == "0", +1, -1)
+svm_test$Y = ifelse(svm_test$label == "0", +1, -1)
+data_train = svm_train %>% dplyr::select(-label)
+data_test = svm_test %>% dplyr::select(-label)
+
+fit = svm(factor(Y) ~ ., data=data_train, kernel="radial", cost= 100, probability = TRUE) 
+predict(fit,data_test, probability=TRUE) %>% attr("probabilities")
+```
+
+:::
+
+## b. Game time. Implement one-vs-rest for the MNIST data. 
+
+- Hint: this may take a few minutes to run. Use chunk option `cache=TRUE` on the code chunk that takes a long time to run. After you knit once (and don't change anything in the chunk), then subsequent knits will fetch the saved data and you won't have to wait.
+
+::: {.solution}
+
+```{r, cache=TRUE}
+or_train = train 
+or_test = test
+or_df = data.frame("Prob 0"= NA, "Prob 1"= NA, "Prob 2"= NA, "Prob 3"= NA, "Prob 4"= NA, "Prob 5"= NA, "Prob 6"= NA, "Prob 7"= NA, "Prob 8"= NA, "Prob 9"= NA )
+for (i in 0:9){
+  # To fit model k on the training data
+  # Y=1, if the label is k and Y=0, if the label is not k (thus comparing class k vs all the rest)
+  or_train$Y = ifelse(or_train$label == i, 1, 0)
+  or_test$Y = ifelse(or_test$label == i, 1, 0)
+  data_or_train = or_train %>% dplyr::select(-label)
+  data_or_test = or_test %>% dplyr::select(-label)
+  
+  # fit svm
+  or_fit = svm(factor(Y) ~ ., data=data_or_train, kernel="radial", cost= 100, probability = TRUE) 
+  
+  a = as_tibble(predict(or_fit,data_or_test, probability=TRUE) %>% attr("probabilities"))
+  or_df[nrow(or_df) + 1,] <- a$`1`
+}
+```
+
+```{r}
+or_df = or_df %>% drop_na()
+or_df$observation = seq(0,9)
+or_df = or_df[, c(11, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]
+or_df
+```
+
+
+:::
+
+
+
+
+
+

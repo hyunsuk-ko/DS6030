@@ -11,6 +11,7 @@ output: R6030::homework
 ```{r config, echo=FALSE}
 source(system.file("config/hw_config.R", package="R6030")) # knitr settings
 options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+rm(list = ls())
 ```
 
 # Required R packages and Directories
@@ -28,14 +29,14 @@ library(tidyverse) # functions for data manipulation
 
 # Problem 1 Geographic Profiling
 
-```{r, echo=FALSE, eval=FALSE}
+```{r}
 set.seed(2019)
 n = 283
 sd = 2.1
 x = sqrt(rnorm(n, sd=sd)^2 + rnorm(n, sd=sd)^2)
 
-geo = read.csv("../data/geo_profile.csv", header = FALSE) %>% mutate(dist = V1)
-geo = geo %>% dplyr::select(dist)
+geo = read.csv("../data/geo_profile.csv", header = FALSE)
+colnames(geo) = c("dist")
 ```
 
 Geographic profiling, a method developed in criminology, can be used to estimate the [home location (roost) of animals](https://www.sciencedirect.com/science/article/pii/S0022519305004157) based on a collection of sightings. The approach requires an estimate of the distribution the animal will travel from their roost to forage for food. 
@@ -73,7 +74,8 @@ $\therefore \theta = \dfrac{\sum_{i=1}^{n} x^2_i}{2n}$
 
 ::: {.solution}
 ```{r}
-mle_theta = sum(geo$dist ^ 2)/ (2*n)
+values = geo$dist
+mle_theta = sum(values ^ 2)/ (2*n)
 
 function_x = function(x) {
   result = (x / mle_theta) * exp(-(x^2) / (2 * mle_theta))
@@ -96,10 +98,8 @@ bw = 5
 bks = seq(0,8)
 hh = hist(geo$dist, breaks = bks)
 
-hh
 
 f = kde(geo$dist, h = bw/3)
-plot(f)
 
 plot(hh,freq=FALSE,ylim=c(0,max(c(hh$density,f$estimate))), las=1,main='',border='white',col='grey75') 
 rug(jitter(geo$dist)) 
@@ -152,7 +152,7 @@ ggplot(crash, aes(x = mile, y = time)) +
 ::: {.solution}
 ```{r}
 bw = 5
-bks = seq(0, 136)
+bks = seq(87, 136)
 hh = hist(crash$mile, breaks = bks)
 
 f = kde(crash$mile, h = bw/3)
@@ -176,7 +176,8 @@ bw = 10
 bks = seq(0, 7)
 hh = hist(crash$time, breaks = bks)
 
-f = kde(crash$time, h = bw/3)
+#f = kde(crash$time, h = bw/3)
+f = kde(crash$time)
 
 plot(hh,freq=FALSE,ylim=c(0,max(c(hh$density,f$estimate))), las=1,main='',border='white',col='grey75') 
 rug(jitter(crash$time)) 
