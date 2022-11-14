@@ -1,0 +1,134 @@
+---
+title: "Homework #9: Stacking" 
+author: "Eric Tria"
+date: "Due: Wed Nov 16 | 11:45am"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2022 | University of Virginia**
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+
+# Problem 1: Kaggle
+
+You are to make at least one official entry in the [House Prices: Advanced Regression Techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview) Kaggle contest. 
+
+- You will need to register in Kaggle (its free)
+- Read the details of the contest. Understand the data and evaluation function.
+- Make at least one submission
+- If you get a score on the public leaderboard of $\text{RMSE}<0.50$ (note RMSE is calculated on the log scale), you receive full credit, otherwise, you'll lose 10 points. 
+    - I'll allow [teaming](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/team) to achieve the score, but only if everyone on the team produces a model that is used to generate the final submission (e.g., stacking or model averaging)
+- Submit the following in Collab:
+    - Code
+    - kaggle name (or team name) so we can ensure you had a valid submission. 
+    - your score and current ranking on the kaggle leaderboard
+- Top 5 scores get 2 bonus points
+    - Teams will split their bonus points among team members
+
+::: {.solution}
+```{r packages, message=FALSE, warning=FALSE}
+data.dir = 'https://mdporter.github.io/DS6030/data/' # data directory
+library(R6030)     # functions for DS 6030
+library(glmnet)
+library(tidyverse) # functions for data manipulation   
+library(FNN)       # knn
+library(caret)
+```
+:::
+
+::: {.solution}
+```{r}
+train <- read.csv('train.csv')
+test <- read.csv('test.csv')
+```
+```{r}
+train_columns <- c('SalePrice', 'LotArea', 'GrLivArea', 'TotalBsmtSF', 'LotConfig', 'LotShape', 'YearRemodAdd')
+test_columns <- c('Id', 'LotArea', 'GrLivArea', 'TotalBsmtSF', 'LotConfig', 'LotShape', 'YearRemodAdd')
+```
+:::
+
+::: {.solution}
+```{r}
+train <- subset(train, select = -c(LotFrontage, FireplaceQu, PoolQC, Fence, MiscFeature))
+
+train$LotArea <- sqrt(train$LotArea)
+train <- train %>% 
+  filter(TotalBsmtSF < 3000) %>% 
+  filter((GarageArea != 0) & (TotalBsmtSF != 0)) %>% 
+  filter(GarageArea < 1000)
+
+train <- train %>% 
+  select(train_columns)
+
+dummy <- dummyVars('~ LotConfig + LotShape', data = train)
+
+#perform one-hot encoding on data frame
+final_df <- data.frame(predict(dummy, newdata=train))
+
+#view final data frame
+final_train <- cbind(final_df, train)
+train <- final_train %>% 
+  subset(select = -c(LotConfig, LotShape))
+train$LotArea <- sqrt(train$LotArea)
+train
+```
+
+```{r}
+test <- subset(test, select = -c(LotFrontage, FireplaceQu, PoolQC, Fence, MiscFeature))
+
+test$LotArea <- sqrt(test$LotArea)
+#test <- test %>% 
+#  filter(TotalBsmtSF < 3000) %>% 
+#  filter((GarageArea != 0) & (TotalBsmtSF != 0)) %>% 
+#  filter(GarageArea < 1000)
+
+test <- test %>% 
+  select(test_columns) %>%
+  mutate(TotalBsmtSF = replace_na(TotalBsmtSF, 0))
+
+dummy_test <- dummyVars('~ LotConfig + LotShape', data = test)
+
+#perform one-hot encoding on data frame
+final_df_test <- data.frame(predict(dummy_test, newdata=test))
+
+#view final data frame
+final_test <- cbind(final_df_test, test)
+test <- final_test %>% 
+  subset(select = -c(LotConfig, LotShape))
+test$LotArea <- sqrt(test$LotArea)
+
+```
+
+
+```{r}
+# knn_20 <- knn.reg(train, test = test, y = train$SalePrice, k = 20)
+knn_model <- knnreg(train %>% select(-SalePrice), train$SalePrice)
+``` 
+
+```{r}
+test_predictions <- predict(knn_model, test %>% select(-Id))
+```
+
+```{r}
+final_predictions <- tibble(Id = test$Id, SalePrice = test_predictions)
+write.csv(final_predictions, 'knn_results.csv', row.names = FALSE)
+```
+
+:::
+
+
+
+
+
+
+
+
+
+
+

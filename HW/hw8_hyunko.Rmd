@@ -42,7 +42,6 @@ Create a single plot that displays each of these quantities as a function of $p_
 ::: {.solution}
 
 ```{r}
-# https://www.upgrad.com/blog/gini-index-for-decision-trees/
 get_info = function(p_m){
   gini = 1 - ( (p_m ^ 2) + (1 - p_m) ^ 2)
   entropy = -(p_m * log2(p_m)) - ((1 - p_m) * log2(1 - p_m))
@@ -93,17 +92,7 @@ Since the average bootstrap probabilities is above 0.5, we can conclude that it 
 ## c. Suppose the cost of mis-classifying a Red observation (as Green) is twice as costly as mis-classifying a Green observation (as Red). How would you modify both approaches to make better final classifications under these unequal costs? Report the final classifications. 
 
 ::: {.solution}
-```{r}
-red_as_green = 2
-green_as_red = 1
-posterior_red = mean(p_red)
-posterior_green = 1 - posterior_red
-
-red_as_green * posterior_green
-green_as_red * posterior_red
-```
-
-Since the cost of misclassifying red as green is higher than that of green as red, we conclude it as red.
+As the cost of mis-classifying Red as Green (False Negative) is twice the cost of mis-classifying Green as Red (False Positive), we should be careful classifying an observation as Green, therefore leading to lower the threshold (below 0.5). Let's say we set the threshold as 0.333. Then, first 3 observations are considered green and last 7 observations are considered red. As the majority of bootstrap samples judge the observation as Red, our final classification would be Red.
 :::
 
 
@@ -117,8 +106,14 @@ Random forest has several tuning parameters that you will explore in this proble
 
 ::: {.solution}
 ntree = number of trees to grow
+
+
 mtry = number of variables randomly sampled as candidates at each split
+
+
 nodesize = minimum size of terminal nodes
+
+
 maxnodes = maximum number of terminal nodes trees in the forest can have
 
 The number of variables evaluated for eachsplit (mtry) seems to be the most important parameter among all. Small mtry leads to high bias, while large mtry leads to high variance.
@@ -131,7 +126,7 @@ The number of variables evaluated for eachsplit (mtry) seems to be the most impo
 
 ```{r}
 test_MSE = c()
-
+cv_result = data.frame("Test MSE" = NA)
 for (i in 1:10) {
   start_idx = i * 50 +1
   if (i != 10){
@@ -151,14 +146,21 @@ for (i in 1:10) {
   rf_model = randomForest(x = x_train, y = y_train)
   prediction = predict(rf_model, x_test)
   MSE = mean((prediction - y_test)^2)
-  test_MSE = append(test_MSE, MSE)
+  #test_MSE = append(test_MSE, MSE)
+  cv_result[nrow(cv_result) + 1,] = MSE
 }
 
-plot(1:10, seq(0,60, by = 61 / 10), type = "n", xlab = "Fold", ylab = "test_MSE", main ="Test MSE of 10-fold CV")
-for (i in 1:10){
-  points(i, test_MSE[i], col = "red", bg = "red", pch = 19)
-}
+cv_result = drop_na(cv_result)
+cv_result$fold = c(1:10)
+cv_result
 ```
+
+```{r}
+ggplot(cv_result, aes(x = fold, y = Test.MSE))+
+  geom_line(aes(color = "red")) +
+  labs(xlab = "Fold", ylab = "Test MSE", title ="Test MSE of 10-fold CV")
+```
+
 
 :::
 
@@ -230,6 +232,8 @@ plot4 = ggplot(result %>% filter(ntree == 500), aes(x = mtry, y = Test.MSE), col
 
 grid.arrange(plot1, plot2, plot3, plot4, ncol=2, nrow = 2)
 ```
+
+$\therefore$ The optimal tuning parameter combination (ntree = 500, mtry = 9) gives the lowest Test MSE (8.415). 
 
 
 :::

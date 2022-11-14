@@ -1,0 +1,268 @@
+---
+title: "Homework #9: Stacking" 
+author: "**Hyun Ko**"
+date: "Due: Wed Nov 16 | 11:45am"
+output: R6030::homework
+---
+
+**DS 6030 | Fall 2022 | University of Virginia**
+
+------------------------------------------------------------------------
+
+```{r config, echo=FALSE}
+source(system.file("config/hw_config.R", package="R6030")) # knitr settings
+options(dplyr.summarise.inform = FALSE)  # ignore dplyr message about grouping
+```
+
+```{r}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(caTools)
+```
+
+```{r}
+train = read.csv("train.csv") %>% select(-Id) %>% select(-Alley)
+test = read.csv("test.csv") %>% select(-Alley)
+```
+
+
+
+# Problem 1: Kaggle
+
+You are to make at least one official entry in the [House Prices: Advanced Regression Techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/overview) Kaggle contest. 
+
+- You will need to register in Kaggle (its free)
+- Read the details of the contest. Understand the data and evaluation function.
+- Make at least one submission
+- If you get a score on the public leaderboard of $\text{RMSE}<0.50$ (note RMSE is calculated on the log scale), you receive full credit, otherwise, you'll lose 10 points. 
+    - I'll allow [teaming](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/team) to achieve the score, but only if everyone on the team produces a model that is used to generate the final submission (e.g., stacking or model averaging)
+- Submit the following in Collab:
+    - Code
+    - kaggle name (or team name) so we can ensure you had a valid submission. 
+    - your score and current ranking on the kaggle leaderboard
+- Top 5 scores get 2 bonus points
+    - Teams will split their bonus points among team members
+    
+```{r, include = FALSE}
+train = subset(train, select = -c(LotFrontage, FireplaceQu, PoolQC, Fence, MiscFeature))
+test = subset(test, select = -c(LotFrontage, FireplaceQu, PoolQC, Fence, MiscFeature))
+```
+
+```{r, include =FALSE}
+train$SalePrice = log(train$SalePrice)
+train$LotArea = sqrt(train$LotArea)
+train = train %>% filter(TotalBsmtSF < 3000)
+train = train %>% filter((GarageArea != 0) & (TotalBsmtSF != 0))
+train = train %>% filter(GarageArea < 1000)
+
+test$LotArea = sqrt(test$LotArea)
+
+ggplot(train) +
+  geom_point(aes(x = LotArea, y = SalePrice))
+
+ggplot(train) +
+  geom_boxplot(aes(x = Neighborhood, y = SalePrice))
+
+ggplot(train) +
+  geom_boxplot(aes(x = as.factor(OverallQual), y = SalePrice)) 
+
+ggplot(train) +
+  geom_boxplot(aes(x = as.factor(OverallCond), y = SalePrice)) 
+
+ggplot(train) +
+  geom_boxplot(aes(x = ExterQual, y = SalePrice))
+
+ggplot(train) +
+  geom_boxplot(aes(x = BsmtQual, y = SalePrice)) 
+
+ggplot(train) +
+  geom_boxplot(aes(x = BsmtCond, y = SalePrice)) 
+
+ggplot(train) +
+  geom_point(aes(x = TotalBsmtSF, y = SalePrice)) 
+
+
+ggplot(train) +
+  geom_point(aes(x = GrLivArea, y = SalePrice)) 
+
+ggplot(train) +
+  geom_boxplot(aes(x = as.factor(KitchenQual), y = SalePrice)) # drop
+
+ggplot(train) +
+  geom_point(aes(x = GarageArea, y = SalePrice)) 
+
+
+train = train %>% select(LotArea, Neighborhood, OverallQual, OverallCond, ExterQual, BsmtQual, BsmtCond, TotalBsmtSF, GrLivArea,KitchenQual, GarageArea, SalePrice)
+
+test = test %>% select(Id, LotArea, Neighborhood, OverallQual, OverallCond, ExterQual, BsmtQual, BsmtCond, TotalBsmtSF, GrLivArea,KitchenQual, GarageArea)
+```
+
+```{r, include = FALSE}
+dummy <- dummyVars("~ Neighborhood + ExterQual + BsmtQual + BsmtCond + KitchenQual", data= train)
+
+#perform one-hot encoding on data frame
+final_df <- data.frame(predict(dummy, newdata=train))
+
+#view final data frame
+final_train = cbind(final_df,train)
+train = subset(final_train, select = -c(Neighborhood, ExterQual, BsmtQual, BsmtCond, KitchenQual))
+train$LotArea = sqrt(train$LotArea)
+train
+```
+
+```{r, include = FALSE}
+dummy <- dummyVars("~ Neighborhood + ExterQual + BsmtQual + BsmtCond + KitchenQual", data= test)
+
+#perform one-hot encoding on data frame
+final_df <- data.frame(predict(dummy, newdata=test))
+
+#view final data frame
+final_test = cbind(final_df,test)
+test = subset(final_test, select = -c(Neighborhood, ExterQual, BsmtQual, BsmtCond, KitchenQual))
+test$LotArea = sqrt(test$LotArea)
+test[is.na(test)] <- 0 
+test
+```
+
+```{r}
+X_train = train %>% select(-SalePrice)
+y_train = train$SalePrice
+
+X_test = test %>% select(-Id)
+```
+
+
+
+```{r}
+# linear train MSE = 0.006927
+linear_model = lm(SalePrice ~., data = train)
+linear_train_yhat = predict(linear_model, X_train)
+linear_prediction = predict(linear_model, X_test) 
+test$linear_yhat = linear_prediction
+
+mean((linear_prediction - linear_train_yhat)^2)
+```
+
+
+```{r}
+# KNN Optimal Hyperparameter Searching: k = 3, train MSE = 0.02276
+
+# k_param = seq(3, 10, by = 1)
+# result = data.frame("K"= NA,  "Train MSE" = NA)
+# set.seed(123)
+# 
+# for (K in k_param){
+#   train_MSE = c()
+#   knn_model = knnreg(X_train, y_train, k = K)
+#   prediction = predict(knn_model, X_train)
+#   MSE = mean((prediction - y_train)^2)
+#   train_MSE = append(train_MSE, MSE)
+#   result[nrow(result) + 1,] <- c(K, MSE)
+# }
+# 
+# result = drop_na(result)
+# result = result %>% arrange(desc(train_MSE))
+# result
+# 
+knn_model = knnreg(X_train, y_train, k = 3)
+knn_train_yhat = predict(knn_model, X_train)
+knn_prediction = predict(knn_model, X_test)
+test$knn_yhat = knn_prediction
+```
+
+```{r}
+# #RF Optimal Hyperparameter searching: mtry = 48, ntree = 1000, train MSE = 0.003496
+# 
+# mtry_vals = seq(8, 48, by = 10)
+# ntree_vals = c(10, 50, 100, 500, 1000)
+# 
+# set.seed(123)
+# ntee_param = c()
+# mtry_param = c()
+# result = data.frame("ntree"= NA, "mtry" = NA, "Train MSE" = NA)
+# 
+# for (ntree in ntree_vals){
+#   for (mtry in mtry_vals) {
+#     train_MSE = c()
+#     rf_model = randomForest(x = X_train, y = y_train, ntree = ntree, mtry = mtry)
+#     prediction = predict(rf_model, X_train)
+#     MSE = mean((prediction - y_train)^2)
+#     train_MSE = append(train_MSE, MSE)
+#   result[nrow(result) + 1,] <- c(ntree,mtry,MSE)
+#   }
+# }
+# 
+# result = drop_na(result)
+# result = result %>% arrange(train_MSE)
+# result
+```
+
+```{r}
+rf_model = randomForest(x = X_train, y = y_train, ntree = 1000, mtry = 48)
+rf_train_yhat = predict(rf_model, X_train)
+rf_prediction = predict(rf_model, X_test)
+test$rf_yhat = rf_prediction
+```
+
+```{r, include = FALSE}
+# #XgBoost Optimal Hyperparameter searching: depth =10, iter = 200
+# 
+# xgb_train = xgb.DMatrix(data = as.matrix(X_train), label = y_train)
+# depth_vals = seq(3, 50, by = 1)
+# 
+# set.seed(123)
+# result = data.frame("depth"= NA, "Train MSE" = NA)
+# 
+# for (depth in depth_vals){
+#   xgb_model = xgboost(data = xgb_train, max.depth = depth, nrounds = 200)
+#   prediction = predict(xgb_model, as.matrix(X_train))
+#   MSE = xgb_model$evaluation_log %>% filter(iter == 200)
+#   result[nrow(result) + 1,] <- c(depth, MSE$train_rmse)
+#   }
+```
+
+```{r}
+result = drop_na(result)
+result = result %>% arrange(desc(Train.MSE))
+result
+
+ggplot(result, aes(x = depth, y = Train.MSE)) +
+  geom_line()
+```
+
+
+```{r}
+xgb_train = xgb.DMatrix(data = as.matrix(X_train), label = y_train)
+xgb_model = xgboost(data = xgb_train, max.depth = 8, nrounds = 200)
+xgb_model$evaluation_log %>% filter(iter == 200)
+xgb_train_yhat = predict(xgb_model, as.matrix(X_train))
+xgb_prediction = predict(xgb_model, as.matrix(X_test))
+test$xgb_yhat = xgb_prediction
+```
+
+```{r}
+# Train MSE
+train_rmse = tibble(true_price = train$SalePrice, linear_yhat = linear_train_yhat, 
+                    knn_yhat = knn_train_yhat, rf_yhat = rf_train_yhat, xgb_yhat = xgb_train_yhat, yhat = (linear_yhat + knn_yhat + rf_train_yhat + xgb_train_yhat) / 4, residual = true_price - yhat) 
+train_rmse
+```
+
+
+```{r}
+# Test MSE: average linear, knn, rf
+my_prediction = test %>% select(Id, linear_yhat, knn_yhat, rf_yhat, xgb_yhat) %>% mutate(SalePrice = exp((linear_yhat + rf_yhat + xgb_yhat) / 3)) %>% select(-linear_yhat) %>% select(-knn_yhat) %>% select(-rf_yhat) %>% select(-xgb_yhat)
+
+# AS KNN is not a good algo for our prediction, I've excluded it.
+# my_prediction = test %>% select(Id, linear_yhat, knn_yhat, rf_yhat) %>% mutate(SalePrice = exp((linear_yhat + knn_yhat + rf_yhat) / 3)) %>% select(-linear_yhat) %>% select(-knn_yhat) %>% select(-rf_yhat)
+my_prediction
+```
+
+
+```{r}
+write.csv(my_prediction, "submission.csv", row.names = FALSE)
+```
+
+
+
